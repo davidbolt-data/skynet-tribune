@@ -117,7 +117,7 @@ async function refreshEdition(env) {
   if (!env.HEADLINES) return;
   const settled = await Promise.allSettled(FEEDS.map(fetchFeed));
   const items = settled.flatMap((result) => result.status === "fulfilled" ? result.value : []);
-  const clean = deduplicate(items)
+  const clean = deduplicate(items.filter(isAiRelevant))
     .filter((item) => item.title && item.url)
     .sort((a, b) => score(b) - score(a));
   if (clean.length < 8) return;
@@ -193,6 +193,11 @@ function deduplicate(items) {
     seen.add(key);
     return true;
   });
+}
+
+function isAiRelevant(item) {
+  const text = `${item.title || ""} ${item.description || ""}`;
+  return /\b(?:AI|A\.I\.|artificial intelligence|machine learning|deep learning|generative|LLM|large language model|chatbot|OpenAI|ChatGPT|Anthropic|Claude|Gemini|DeepMind|Copilot|neural|deepfake|synthetic media|agentic|inference|humanoid|robotics?)\b/i.test(text);
 }
 
 function score(item) {
