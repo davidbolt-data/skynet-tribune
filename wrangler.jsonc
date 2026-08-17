@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "skynet-tribune",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-08-17",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "triggers": {
+    "crons": ["*/30 * * * *"]
+  }
+  // After creating a KV namespace, add:
+  // "kv_namespaces": [{ "binding": "HEADLINES", "id": "YOUR_NAMESPACE_ID" }]
+}
