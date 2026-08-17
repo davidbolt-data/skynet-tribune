@@ -9,7 +9,11 @@
   },
   "triggers": {
     "crons": ["*/30 * * * *"]
-  }
-  // After creating a KV namespace, add:
-  // "kv_namespaces": [{ "binding": "HEADLINES", "id": "YOUR_NAMESPACE_ID" }]
+  },
+  "kv_namespaces": [
+    {
+      "binding": "HEADLINES",
+      "id": "2252e050964e45f0b7edc233759df0c8"
+    }
+  ]
 }
