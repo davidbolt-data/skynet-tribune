@@ -142,8 +142,8 @@ function htmlResponse(html, status = 200) {
 function sitemapResponse(xml) { return new Response(xml, { headers: { "content-type": "application/xml; charset=UTF-8", "cache-control": "public, max-age=3600" } }); }
 
 async function getEdition(env) {
-  if (!env.HEADLINES) return DEFAULT_EDITION;
-  return (await env.HEADLINES.get(EDITION_KEY, "json")) || DEFAULT_EDITION;
+  if (!env.HEADLINES) return sanitizeEdition(DEFAULT_EDITION);
+  return sanitizeEdition((await env.HEADLINES.get(EDITION_KEY, "json")) || DEFAULT_EDITION);
 }
 async function getArchiveDates(env) {
   if (!env.HEADLINES) return [];
@@ -154,7 +154,9 @@ async function getArchivedEdition(env, date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   const current = await getEdition(env);
   if (editionDate(current) === date) return current;
-  return env.HEADLINES ? env.HEADLINES.get(`${ARCHIVE_KEY_PREFIX}${date}`, "json") : null;
+  if (!env.HEADLINES) return null;
+  const edition = await env.HEADLINES.get(`${ARCHIVE_KEY_PREFIX}${date}`, "json");
+  return edition ? sanitizeEdition(edition) : null;
 }
 
 async function refreshEdition(env) {
@@ -209,7 +211,7 @@ async function fetchFeed(feed) {
     const atomLink = block.match(/<link\b[^>]*href=["']([^"']+)["']/i)?.[1];
     const description = textTag(block, "description") || textTag(block, "summary") || textTag(block, "content");
     const image = block.match(/<(?:media:content|media:thumbnail)\b[^>]*url=["']([^"']+)["']/i)?.[1] || block.match(/<enclosure\b[^>]*url=["']([^"']+)["'][^>]*type=["']image\//i)?.[1] || description.match(/<img\b[^>]*src=["']([^"']+)["']/i)?.[1];
-    return { title: stripHtml(title), url: decodeEntities(atomLink || directLink), source: feed.name, sourcePriority: feed.priority, publishedAt: safeDate(textTag(block, "pubDate") || textTag(block, "published") || textTag(block, "updated")), description: stripHtml(description).slice(0, 240), image: image ? decodeEntities(image) : undefined };
+    return { title: stripHtml(title), url: normalizeStoryUrl(atomLink || directLink), source: feed.name, sourcePriority: feed.priority, publishedAt: safeDate(textTag(block, "pubDate") || textTag(block, "published") || textTag(block, "updated")), description: stripHtml(description).slice(0, 240), image: image ? decodeEntities(image) : undefined };
   });
 }
 
@@ -218,11 +220,48 @@ function textTag(block, tag) {
   const match = block.match(new RegExp(`<${safeTag}\\b[^>]*>([\\s\\S]*?)<\\/${safeTag}>`, "i"));
   return match?.[1]?.replace(/^<!\[CDATA\[|\]\]>$/g, "").trim() || "";
 }
-function stripHtml(value = "") { return decodeEntities(value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()); }
+function stripHtml(value = "") { return decodeEntities(value).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(); }
 function decodeEntities(value = "") {
   let decoded = value;
   for (let i = 0; i < 2; i += 1) decoded = decoded.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)));
   return decoded;
+}
+function normalizeStoryUrl(value = "") {
+  const decoded = decodeEntities(value).trim();
+  try {
+    const url = new URL(decoded);
+    if (/^(?:www\.)?google\.com$/i.test(url.hostname) && url.pathname === "/url") {
+      const target = url.searchParams.get("url") || url.searchParams.get("q");
+      if (target) {
+        const direct = new URL(target);
+        if (["http:", "https:"].includes(direct.protocol)) return direct.href;
+      }
+    }
+    return url.href;
+  } catch {
+    return decoded;
+  }
+}
+function cleanStoryItem(item = {}) {
+  return {
+    ...item,
+    title: stripHtml(item.title || ""),
+    url: normalizeStoryUrl(item.url || ""),
+    description: item.description ? stripHtml(item.description) : item.description,
+  };
+}
+function sanitizeEdition(edition) {
+  if (!edition || typeof edition !== "object") return DEFAULT_EDITION;
+  const sections = Object.fromEntries(Object.entries(edition.sections || {}).map(([name, stories]) => [
+    name,
+    Array.isArray(stories) ? stories.map(cleanStoryItem) : [],
+  ]));
+  return {
+    ...edition,
+    lead: cleanStoryItem(edition.lead || DEFAULT_EDITION.lead),
+    rail: Array.isArray(edition.rail) ? edition.rail.map(cleanStoryItem) : [],
+    sections,
+  };
 }
 function safeDate(value) { const date = new Date(value || Date.now()); return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString(); }
 function deduplicate(items) {
