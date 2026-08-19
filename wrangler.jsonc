@@ -5,7 +5,8 @@
   "compatibility_date": "2026-08-17",
   "assets": {
     "directory": "./public",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    "html_handling": "none"
   },
   "triggers": {
     "crons": ["*/30 * * * *"]
