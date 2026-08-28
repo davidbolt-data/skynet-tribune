@@ -127,6 +127,7 @@ export default {
       const edition = await getArchivedEdition(env, archiveMatch[1]);
       return edition ? htmlResponse(renderArchivedEdition(edition, archiveMatch[1], url.origin)) : htmlResponse(renderNotFound(url.origin), 404);
     }
+    if (path === "/feed.xml") return rssResponse(renderFeed(await getEdition(env), url.origin));
     if (path === "/sitemap.xml") return sitemapResponse(renderSitemap(url.origin, await getArchiveDates(env)));
     if (path === "/robots.txt") return new Response(`User-agent: *\nAllow: /\n\nSitemap: ${url.origin}/sitemap.xml\n`, { headers: { "content-type": "text/plain; charset=UTF-8", "cache-control": "public, max-age=3600" } });
     const assetResponse = await env.ASSETS.fetch(request);
@@ -144,6 +145,7 @@ function htmlResponse(html, status = 200) {
   return new Response(html, { status, headers: { "content-type": "text/html; charset=UTF-8", "cache-control": "public, max-age=120, stale-while-revalidate=900", "x-content-type-options": "nosniff", "referrer-policy": "strict-origin-when-cross-origin" } });
 }
 function sitemapResponse(xml) { return new Response(xml, { headers: { "content-type": "application/xml; charset=UTF-8", "cache-control": "public, max-age=3600" } }); }
+function rssResponse(xml) { return new Response(xml, { headers: { "content-type": "application/rss+xml; charset=UTF-8", "cache-control": "public, max-age=300, stale-while-revalidate=900" } }); }
 
 async function getEdition(env) {
   if (!env.HEADLINES) return sanitizeEdition(DEFAULT_EDITION);
@@ -327,7 +329,7 @@ function renderNotFound(origin) {
 
 function documentHtml({ title, description, canonical, image = "/hero-ai-news.png", origin, body, robots = "index,follow" }) {
   const jsonLd = JSON.stringify({ "@context": "https://schema.org", "@type": "WebSite", name: SITE.name, url: `${origin}/`, description: SITE.description, publisher: { "@type": "Organization", name: SITE.name, url: `${origin}/` } }).replace(/</g, "\\u003c");
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} | ${SITE.name}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="${robots}"><meta property="og:type" content="website"><meta property="og:title" content="${escapeHtml(title)} | ${SITE.name}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:image" content="${absoluteUrl(image, origin)}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="stylesheet" href="/styles.css?v=20260817-2"><script type="application/ld+json">${jsonLd}</script></head><body>${body}<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"88ad5d22c43c436381016f49cc2827f9"}'></script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} | ${SITE.name}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="${robots}"><meta property="og:type" content="website"><meta property="og:title" content="${escapeHtml(title)} | ${SITE.name}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:image" content="${absoluteUrl(image, origin)}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="alternate" type="application/rss+xml" title="${SITE.name} RSS" href="${origin}/feed.xml"><link rel="stylesheet" href="/styles.css?v=20260817-2"><script type="application/ld+json">${jsonLd}</script></head><body>${body}<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"88ad5d22c43c436381016f49cc2827f9"}'></script></body></html>`;
 }
 
 function siteHeader(activePath) {
@@ -357,6 +359,18 @@ function formatArchiveDate(value) { const date = new Date(`${value}T12:00:00Z`);
 function renderSitemap(origin, dates) {
   const paths = ["/", ...Object.keys(CATEGORY_ROUTES), ...Object.keys(INFO_PAGES), "/archive/", ...dates.map((date) => `/archive/${date}/`)];
   return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map((path) => `<url><loc>${escapeXml(`${origin}${path}`)}</loc></url>`).join("")}</urlset>`;
+}
+function renderFeed(edition, origin) {
+  const candidates = [edition.lead, ...(edition.rail || []), ...Object.values(edition.sections || {}).flat()].filter((item) => item?.title && item?.url);
+  const seen = new Set();
+  const items = candidates.filter((item) => {
+    const key = normalizeStoryUrl(item.url);
+    if (!key || key === "#" || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 30);
+  const updated = safeDate(edition.generatedAt);
+  return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>${escapeXml(SITE.name)}</title><link>${escapeXml(`${origin}/`)}</link><description>${escapeXml(SITE.description)}</description><language>en-us</language><lastBuildDate>${new Date(updated).toUTCString()}</lastBuildDate><atom:link href="${escapeXml(`${origin}/feed.xml`)}" rel="self" type="application/rss+xml"/>${items.map((item) => `<item><title>${escapeXml(item.title)}</title><link>${escapeXml(item.url)}</link><guid isPermaLink="true">${escapeXml(item.url)}</guid><pubDate>${new Date(safeDate(item.publishedAt)).toUTCString()}</pubDate><description>${escapeXml(item.description || `${item.source || SITE.shortName} headline indexed by ${SITE.shortName}.`)}</description></item>`).join("")}</channel></rss>`;
 }
 function escapeHtml(value = "") { return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]); }
 function escapeXml(value = "") { return escapeHtml(value); }
