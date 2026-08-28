@@ -1,6 +1,7 @@
 const EDITION_KEY = "current-edition";
 const ARCHIVE_INDEX_KEY = "archive:index";
 const ARCHIVE_KEY_PREFIX = "archive:";
+const PRIMARY_ORIGIN = "https://thedrone.report";
 const SITE = {
   name: "The Skynet Tribune",
   shortName: "Skynet Tribune",
@@ -109,6 +110,9 @@ function story(title, source, category, hoursAgo) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.hostname.endsWith(".workers.dev")) {
+      return Response.redirect(`${PRIMARY_ORIGIN}${url.pathname}${url.search}`, 301);
+    }
     const path = normalizePath(url.pathname);
     if (path === "/api/edition/") return Response.json(await getEdition(env), { headers: { "cache-control": "public, max-age=60" } });
     if (path === "/") return htmlResponse(renderHome(await getEdition(env), url.origin));
