@@ -329,7 +329,15 @@ function renderNotFound(origin) {
 
 function documentHtml({ title, description, canonical, image = "/hero-ai-news.png", origin, body, robots = "index,follow" }) {
   const jsonLd = JSON.stringify({ "@context": "https://schema.org", "@type": "WebSite", name: SITE.name, url: `${origin}/`, description: SITE.description, publisher: { "@type": "Organization", name: SITE.name, url: `${origin}/` } }).replace(/</g, "\\u003c");
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} | ${SITE.name}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="${robots}"><meta property="og:type" content="website"><meta property="og:title" content="${escapeHtml(title)} | ${SITE.name}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:image" content="${absoluteUrl(image, origin)}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="alternate" type="application/rss+xml" title="${SITE.name} RSS" href="${origin}/feed.xml"><link rel="stylesheet" href="/styles.css?v=20260817-2"><script type="application/ld+json">${jsonLd}</script></head><body>${body}<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"88ad5d22c43c436381016f49cc2827f9"}'></script></body></html>`;
+  return `<!doctype html><html lang="en"><head>
+  <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-HNEXMT8DDT"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-HNEXMT8DDT');
+</script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} | ${SITE.name}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="${robots}"><meta property="og:type" content="website"><meta property="og:title" content="${escapeHtml(title)} | ${SITE.name}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:image" content="${absoluteUrl(image, origin)}"><link rel="canonical" href="${escapeHtml(canonical)}"><link rel="alternate" type="application/rss+xml" title="${SITE.name} RSS" href="${origin}/feed.xml"><link rel="stylesheet" href="/styles.css?v=20260817-2"><script type="application/ld+json">${jsonLd}</script></head><body>${body}<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"88ad5d22c43c436381016f49cc2827f9"}'></script></body></html>`;
 }
 
 function siteHeader(activePath) {
