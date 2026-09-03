@@ -169,6 +169,48 @@ main { padding-block: 18px 48px; }
 .signal h2 { margin: 6px 0 9px; font-size: 1.05rem; line-height: 1.2; }
 .signal h2 a { color: var(--blue); }
 
+.human-brief {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  margin-top: 26px;
+  border: 2px solid var(--ink);
+  background: var(--white);
+  box-shadow: 7px 7px 0 var(--magenta);
+}
+.human-brief__label {
+  padding: 20px;
+  background: var(--ink);
+  color: var(--white);
+}
+.human-brief__label .kicker { color: #ff7fbd; }
+.human-brief__label strong {
+  display: block;
+  margin-top: 12px;
+  font-family: var(--display);
+  font-size: 1.65rem;
+  line-height: .95;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+.human-brief__copy { padding: 18px 22px 20px; }
+.human-brief__copy h2 { margin: 0 0 8px; font-size: clamp(1.35rem, 3vw, 2rem); line-height: 1.08; }
+.human-brief__copy h2 a { color: var(--blue); }
+.human-brief__copy p { max-width: 790px; margin: 0; color: #333238; line-height: 1.5; }
+.human-brief__footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 14px;
+}
+.human-brief__link {
+  color: var(--blue);
+  font-size: .76rem;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
 .section-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -324,6 +366,7 @@ main { padding-block: 18px 48px; }
   .signal-rail { grid-template-columns: 1fr; }
   .signal { min-height: 0; padding: 14px 0; }
   .signal + .signal { border-left: 0; border-top: 1px solid var(--rule); padding-left: 0; }
+  .human-brief { grid-template-columns: 180px minmax(0, 1fr); }
   .section-grid { grid-template-columns: 1fr 1fr; }
   .page-header h1 { font-size: clamp(3.4rem, 13vw, 6rem); }
 }
@@ -338,6 +381,11 @@ main { padding-block: 18px 48px; }
   .footer__inner { display: block; }
   .footer nav { justify-content: flex-start; margin-top: 18px; }
   .utility-nav .montanimation-link { margin-left: 0; }
+  .human-brief { grid-template-columns: 1fr; }
+  .human-brief__label { padding: 15px 17px; }
+  .human-brief__label strong { display: none; }
+  .human-brief__copy { padding: 17px; }
+  .human-brief__footer { align-items: flex-start; flex-direction: column; gap: 9px; }
   .archive-list a { align-items: flex-start; flex-direction: column; gap: 4px; }
   .category-story { grid-template-columns: 40px minmax(0, 1fr); gap: 10px; }
 }
