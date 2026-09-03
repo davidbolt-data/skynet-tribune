@@ -241,13 +241,14 @@ async function fetchLatestHumanBrief() {
       if (!block) continue;
       const title = stripHtml(textTag(block, "title"));
       const url = normalizeStoryUrl(textTag(block, "link"));
-      const excerpt = stripHtml(textTag(block, "description") || textTag(block, "content:encoded")).slice(0, 360);
+      const excerpt = cleanBriefExcerpt(textTag(block, "description") || textTag(block, "content:encoded")).slice(0, 360);
+      const creator = stripHtml(textTag(block, "dc:creator"));
       return cleanHumanBrief({
         title,
         url: trackingUrl(url, "human_brief"),
         excerpt,
         publishedAt: safeDate(textTag(block, "pubDate")),
-        author: stripHtml(textTag(block, "dc:creator")) || "David Bolt",
+        author: /^Montanimation$/i.test(creator) ? "David Bolt" : creator || "David Bolt",
       });
     } catch {
       // Try the broader AI feed if the dedicated category is not available yet.
@@ -300,6 +301,9 @@ function cleanHumanBrief(brief) {
     publishedAt: safeDate(brief.publishedAt),
     author: stripHtml(brief.author || "David Bolt"),
   };
+}
+function cleanBriefExcerpt(value) {
+  return stripHtml(value).replace(/\s+The post\b[\s\S]*?\bappeared first on\b[\s\S]*$/i, "").trim();
 }
 function sanitizeEdition(edition) {
   if (!edition || typeof edition !== "object") return DEFAULT_EDITION;
