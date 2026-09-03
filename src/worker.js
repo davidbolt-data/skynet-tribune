@@ -78,17 +78,22 @@ const INFO_PAGES = {
     title: "Sources",
     eyebrow: "Where the signals originate",
     description: `<p>The front page currently monitors public feeds from the following publishers and services. Inclusion does not imply endorsement, and the list may change as feeds become available or stop behaving themselves.</p>
-      <ul class="source-list"><li><a href="https://www.wired.com/tag/artificial-intelligence/" target="_blank" rel="noopener noreferrer">WIRED</a></li><li><a href="https://techcrunch.com/category/artificial-intelligence/" target="_blank" rel="noopener noreferrer">TechCrunch AI</a></li><li><a href="https://www.theverge.com/ai-artificial-intelligence" target="_blank" rel="noopener noreferrer">The Verge AI</a></li><li><a href="https://www.engadget.com/ai/" target="_blank" rel="noopener noreferrer">Engadget AI</a></li><li>Google Alerts for additional AI coverage</li></ul>
+      <ul class="source-list"><li><a href="https://www.wired.com/tag/artificial-intelligence/" target="_blank" rel="noopener noreferrer">WIRED</a></li><li><a href="https://arstechnica.com/ai/" target="_blank" rel="noopener noreferrer">Ars Technica AI</a></li><li><a href="https://techcrunch.com/category/artificial-intelligence/" target="_blank" rel="noopener noreferrer">TechCrunch AI</a></li><li><a href="https://www.theverge.com/ai-artificial-intelligence" target="_blank" rel="noopener noreferrer">The Verge AI</a></li><li><a href="https://spectrum.ieee.org/topic/artificial-intelligence/" target="_blank" rel="noopener noreferrer">IEEE Spectrum AI</a></li><li><a href="https://www.404media.co/" target="_blank" rel="noopener noreferrer">404 Media</a></li><li><a href="https://restofworld.org/tag/ai/" target="_blank" rel="noopener noreferrer">Rest of World AI</a></li><li><a href="https://www.theregister.com/software/ai_ml/" target="_blank" rel="noopener noreferrer">The Register AI + ML</a></li><li><a href="https://www.engadget.com/ai/" target="_blank" rel="noopener noreferrer">Engadget AI</a></li><li>Google Alerts for additional AI coverage</li></ul>
       <p>Headlines link directly to their original publishers. Articles remain the property of those publishers.</p>`,
   },
 };
 
 const FEEDS = [
   { name: "WIRED", url: "https://www.wired.com/feed/tag/ai/latest/rss", priority: 5 },
+  { name: "Ars Technica", url: "https://arstechnica.com/ai/feed/", priority: 5 },
   { name: "TechCrunch", url: "https://techcrunch.com/category/artificial-intelligence/feed/", priority: 4 },
   { name: "The Verge", url: "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", priority: 4 },
+  { name: "IEEE Spectrum", url: "https://spectrum.ieee.org/feeds/topic/artificial-intelligence.rss", priority: 4 },
+  { name: "404 Media", url: "https://www.404media.co/rss/", priority: 4 },
+  { name: "Rest of World", url: "https://restofworld.org/feed/latest/", priority: 4 },
+  { name: "The Register", url: "https://www.theregister.com/software/ai_ml/headlines.atom", priority: 3 },
   { name: "Engadget", url: "https://www.engadget.com/rss.xml", priority: 2 },
-  { name: "Google AI News", url: "https://www.google.com/alerts/feeds/11659971937080533643/17708980133697934505", priority: 3 },
+  { name: "Google AI News", url: "https://www.google.com/alerts/feeds/11659971937080533643/17708980133697934505", priority: 1 },
 ];
 
 const DEFAULT_EDITION = {
@@ -179,7 +184,9 @@ async function refreshEdition(env) {
     fetchLatestHumanBrief().catch(() => cleanHumanBrief(previousEdition?.humanBrief)),
   ]);
   const items = settled.flatMap((result) => result.status === "fulfilled" ? result.value : []);
-  const clean = deduplicate(items.filter(isAiRelevant)).filter((item) => item.title && item.url).sort((a, b) => score(b) - score(a));
+  const clean = limitSourceConcentration(
+    deduplicate(items.filter(isAiRelevant)).filter((item) => item.title && item.url).sort((a, b) => score(b) - score(a)),
+  );
   if (clean.length < 8) return;
   const leadIndex = clean.findIndex((item) => item.image);
   const lead = clean.splice(leadIndex >= 0 ? leadIndex : 0, 1)[0];
@@ -323,6 +330,16 @@ function safeDate(value) { const date = new Date(value || Date.now()); return Nu
 function deduplicate(items) {
   const seen = new Set();
   return items.filter((item) => { const key = item.title.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 90); if (!key || seen.has(key)) return false; seen.add(key); return true; });
+}
+function limitSourceConcentration(items) {
+  const counts = new Map();
+  return items.filter((item) => {
+    const limit = item.source === "Google AI News" ? 2 : 8;
+    const count = counts.get(item.source) || 0;
+    if (count >= limit) return false;
+    counts.set(item.source, count + 1);
+    return true;
+  });
 }
 function isAiRelevant(item) { const text = `${item.title || ""} ${item.description || ""}`; return /\b(?:AI|A\.I\.|artificial intelligence|machine learning|deep learning|generative|LLM|large language model|chatbot|OpenAI|ChatGPT|Anthropic|Claude|Gemini|DeepMind|Copilot|neural|deepfake|synthetic media|agentic|inference|humanoid|robotics?)\b/i.test(text); }
 function score(item) { const ageHours = Math.max(0, (Date.now() - Date.parse(item.publishedAt)) / 3600000); return (item.sourcePriority || 1) * 8 + (item.image ? 8 : 0) + Math.max(0, 48 - ageHours); }
