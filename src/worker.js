@@ -9,6 +9,12 @@ const SITE = {
   description: "A fast, human-curated front page for artificial intelligence news.",
 };
 
+const HUMAN_BRIEF_FEEDS = [
+  "https://montanimation.studio/category/ai-news-brief/feed/",
+  "https://montanimation.studio/category/ai/feed/",
+];
+const HUMAN_BRIEF_TITLE_PATTERN = /\bAI News\b|Today(?:'|’)s AI news|AI news for|\bAI News Items\b/i;
+
 const CATEGORY_ROUTES = {
   "/model-wars/": "Model Wars",
   "/ai-business/": "AI Business",
@@ -168,7 +174,10 @@ async function getArchivedEdition(env, date) {
 async function refreshEdition(env) {
   if (!env.HEADLINES) return;
   const previousEdition = await env.HEADLINES.get(EDITION_KEY, "json");
-  const settled = await Promise.allSettled(FEEDS.map(fetchFeed));
+  const [settled, humanBrief] = await Promise.all([
+    Promise.allSettled(FEEDS.map(fetchFeed)),
+    fetchLatestHumanBrief().catch(() => cleanHumanBrief(previousEdition?.humanBrief)),
+  ]);
   const items = settled.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   const clean = deduplicate(items.filter(isAiRelevant)).filter((item) => item.title && item.url).sort((a, b) => score(b) - score(a));
   if (clean.length < 8) return;
@@ -184,7 +193,7 @@ async function refreshEdition(env) {
   const assignedUrls = new Set(Object.values(sections).flat().map((item) => item.url));
   const leftovers = clean.filter((item) => !assignedUrls.has(item.url));
   for (const name of sectionNames) while (sections[name].length < 4 && leftovers.length) sections[name].push({ ...leftovers.shift(), category: name });
-  const nextEdition = { generatedAt: new Date().toISOString(), lead, rail, sections };
+  const nextEdition = { generatedAt: new Date().toISOString(), lead, rail, sections, humanBrief };
   if (previousEdition && editionDate(previousEdition) !== editionDate(nextEdition)) await archiveEdition(env, previousEdition);
   await env.HEADLINES.put(EDITION_KEY, JSON.stringify(nextEdition));
 }
@@ -219,6 +228,32 @@ async function fetchFeed(feed) {
     const image = block.match(/<(?:media:content|media:thumbnail)\b[^>]*url=["']([^"']+)["']/i)?.[1] || block.match(/<enclosure\b[^>]*url=["']([^"']+)["'][^>]*type=["']image\//i)?.[1] || description.match(/<img\b[^>]*src=["']([^"']+)["']/i)?.[1];
     return { title: stripHtml(title), url: normalizeStoryUrl(atomLink || directLink), source: feed.name, sourcePriority: feed.priority, publishedAt: safeDate(textTag(block, "pubDate") || textTag(block, "published") || textTag(block, "updated")), description: stripHtml(description).slice(0, 240), image: image ? decodeEntities(image) : undefined };
   });
+}
+
+async function fetchLatestHumanBrief() {
+  for (const feedUrl of HUMAN_BRIEF_FEEDS) {
+    try {
+      const response = await fetch(feedUrl, { headers: { "user-agent": "SkynetTribune/1.0 (+AI news index)" } });
+      if (!response.ok) continue;
+      const xml = await response.text();
+      const blocks = [...xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)].map((match) => match[0]);
+      const block = blocks.find((item) => HUMAN_BRIEF_TITLE_PATTERN.test(stripHtml(textTag(item, "title"))));
+      if (!block) continue;
+      const title = stripHtml(textTag(block, "title"));
+      const url = normalizeStoryUrl(textTag(block, "link"));
+      const excerpt = stripHtml(textTag(block, "description") || textTag(block, "content:encoded")).slice(0, 360);
+      return cleanHumanBrief({
+        title,
+        url: trackingUrl(url, "human_brief"),
+        excerpt,
+        publishedAt: safeDate(textTag(block, "pubDate")),
+        author: stripHtml(textTag(block, "dc:creator")) || "David Bolt",
+      });
+    } catch {
+      // Try the broader AI feed if the dedicated category is not available yet.
+    }
+  }
+  return null;
 }
 
 function textTag(block, tag) {
@@ -256,6 +291,16 @@ function cleanStoryItem(item = {}) {
     description: item.description ? stripHtml(item.description) : item.description,
   };
 }
+function cleanHumanBrief(brief) {
+  if (!brief || typeof brief !== "object" || !brief.title || !brief.url) return null;
+  return {
+    title: stripHtml(brief.title),
+    url: normalizeStoryUrl(brief.url),
+    excerpt: stripHtml(brief.excerpt || "").slice(0, 360),
+    publishedAt: safeDate(brief.publishedAt),
+    author: stripHtml(brief.author || "David Bolt"),
+  };
+}
 function sanitizeEdition(edition) {
   if (!edition || typeof edition !== "object") return DEFAULT_EDITION;
   const sections = Object.fromEntries(Object.entries(edition.sections || {}).map(([name, stories]) => [
@@ -267,6 +312,7 @@ function sanitizeEdition(edition) {
     lead: cleanStoryItem(edition.lead || DEFAULT_EDITION.lead),
     rail: Array.isArray(edition.rail) ? edition.rail.map(cleanStoryItem) : [],
     sections,
+    humanBrief: cleanHumanBrief(edition.humanBrief),
   };
 }
 function safeDate(value) { const date = new Date(value || Date.now()); return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString(); }
@@ -292,8 +338,8 @@ function renderHome(edition, origin) {
   const sections = Object.entries(edition.sections || DEFAULT_EDITION.sections).map(([name, stories]) => sectionHtml(name, stories, true)).join("");
   const body = `<div class="topline"><div class="topline__inner"><span><span class="live-dot">●</span> Machine watch active</span><span>Updated ${formatDate(updated)} · Refreshes every 30 minutes</span></div></div>${siteHeader("/")}
     <main><article class="hero"><a class="hero__image-link" href="${safeUrl(lead.url)}" target="_blank" rel="noopener noreferrer"><img class="hero__image" src="${safeImage(lead.image)}" alt="" width="1536" height="864" fetchpriority="high" referrerpolicy="no-referrer"></a><div class="hero__copy"><span class="kicker">Lead Signal</span><h1 class="hero__headline"><a href="${safeUrl(lead.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(lead.title)}</a></h1><p class="dek">${escapeHtml(lead.description || "The most consequential AI story on the wire right now.")}</p>${metaHtml(lead)}</div></article>
-    <section class="signal-rail" aria-label="Top developing stories">${(edition.rail || []).slice(0, 3).map((item, i) => `<article class="signal"><span class="kicker">0${i + 1} / Developing</span><h2><a href="${safeUrl(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a></h2>${metaHtml(item)}</article>`).join("")}</section><div class="section-grid">${sections}</div></main>${siteFooter()}`;
-  return documentHtml({ title: lead.title, description: SITE.description, canonical: `${origin}/`, image: lead.image, origin, body });
+    <section class="signal-rail" aria-label="Top developing stories">${(edition.rail || []).slice(0, 3).map((item, i) => `<article class="signal"><span class="kicker">0${i + 1} / Developing</span><h2><a href="${safeUrl(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a></h2>${metaHtml(item)}</article>`).join("")}</section>${humanBriefHtml(edition.humanBrief)}<div class="section-grid">${sections}</div></main>${siteFooter()}`;
+  return documentHtml({ title: "Curated AI News and Commentary", description: SITE.description, canonical: `${origin}/`, image: lead.image, origin, body });
 }
 
 function renderCategoryPage(name, edition, origin) {
@@ -351,6 +397,10 @@ function sectionHtml(name, stories = [], linkTitle = false) {
   const heading = linkTitle ? `<a href="${categoryRoute(name)}">${escapeHtml(name)}</a>` : escapeHtml(name);
   return `<section class="news-section"><h2 class="section-title"><span>//</span> ${heading}</h2><ul class="story-list">${stories.slice(0, 7).map((item) => `<li><a href="${safeUrl(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>${metaHtml(item)}</li>`).join("") || `<li class="empty-note">Waiting for the next signal.</li>`}</ul></section>`;
 }
+function humanBriefHtml(brief) {
+  if (!brief) return "";
+  return `<aside class="human-brief" aria-labelledby="human-brief-title"><div class="human-brief__label"><span class="kicker">From the human desk</span><strong>Less machine.<br>More suspicion.</strong></div><div class="human-brief__copy"><h2 id="human-brief-title"><a href="${safeUrl(brief.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(brief.title)}</a></h2>${brief.excerpt ? `<p>${escapeHtml(brief.excerpt)}</p>` : ""}<div class="human-brief__footer"><span class="meta"><b>${escapeHtml(brief.author || "David Bolt")}</b> · ${timeAgo(brief.publishedAt)}</span><a class="human-brief__link" href="${safeUrl(brief.url)}" target="_blank" rel="noopener noreferrer">Read the complete briefing →</a></div></div></aside>`;
+}
 function storyCard(item, number) { return `<article class="category-story"><span class="story-number">${String(number).padStart(2, "0")}</span><div><h2><a href="${safeUrl(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a></h2>${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}${metaHtml(item)}</div></article>`; }
 function categoryRoute(name) { return Object.entries(CATEGORY_ROUTES).find(([, label]) => label === name)?.[0] || "/more-signals/"; }
 function metaHtml(item) { return `<span class="meta"><b>${escapeHtml(item.source || "Source")}</b> · ${timeAgo(item.publishedAt)}</span>`; }
@@ -364,6 +414,17 @@ function timeAgo(value) {
 }
 function formatDate(date) { return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short" }).format(date); }
 function formatArchiveDate(value) { const date = new Date(`${value}T12:00:00Z`); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }).format(date); }
+function trackingUrl(value, campaign) {
+  try {
+    const url = new URL(value);
+    url.searchParams.set("utm_source", "thedrone.report");
+    url.searchParams.set("utm_medium", "referral");
+    url.searchParams.set("utm_campaign", campaign);
+    return url.href;
+  } catch {
+    return value;
+  }
+}
 function renderSitemap(origin, dates) {
   const paths = ["/", ...Object.keys(CATEGORY_ROUTES), ...Object.keys(INFO_PAGES), "/archive/", ...dates.map((date) => `/archive/${date}/`)];
   return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map((path) => `<url><loc>${escapeXml(`${origin}${path}`)}</loc></url>`).join("")}</urlset>`;
